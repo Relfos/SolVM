@@ -88,56 +88,79 @@ Const
   SOLOP_INT_DIV   = 25;    // divide reg by reg
   SOLOP_INT_MOD   = 26;    // modulus of reg by reg
 
-  // float math opcodes
-  SOLOP_FLOAT_MOVE  = 31;    // copy int reg to float reg
-  SOLOP_FLOAT_TRUNC = 32;    // truncate float reg to integer reg
-  SOLOP_FLOAT_ROUND = 33;    // round float reg to integer reg
-  SOLOP_FLOAT_ADD   = 34;    // add reg to reg
-  SOLOP_FLOAT_SUB   = 35;    // subtract reg from reg
-  SOLOP_FLOAT_MUL   = 36;    // multiply reg with reg
-  SOLOP_FLOAT_DIV   = 37;    // divide reg by reg
-  SOLOP_FLOAT_MOD   = 38;    // modulus of reg by reg
-  SOLOP_FLOAT_SQRT  = 39;    // square root of reg
-  SOLOP_FLOAT_INV_SQRT = 40; // 1.0 / square root of reg
-  SOLOP_FLOAT_LOG   = 41;    // log2 of reg
-  SOLOP_FLOAT_POW   = 42;    // log2 of reg
-  SOLOP_FLOAT_COS   = 43;    // cosine of reg
-  SOLOP_FLOAT_SIN   = 44;    // sine of reg
-  SOLOP_FLOAT_TAN   = 45;    // tangent of reg
-  SOLOP_FLOAT_ARCCOS = 46;   // arc cosine of reg
-  SOLOP_FLOAT_ARCSIN = 47;   // arc sine of reg
-  SOLOP_FLOAT_ARCTAN = 48;   // arc tangent of reg
-  SOLOP_FLOAT_ATAN2 = 49;   // arctan2 of reg
-  SOLOP_FLOAT_LENGTH = 50;   // length of reg (or abs() if size = 0)
-
   // bit math opcodes
-  SOLOP_AND = 60;    // 'and' two regs
-  SOLOP_OR  = 61;    // 'or' two regs
-  SOLOP_XOR = 62;    // 'xor' two regs
-  SOLOP_NOT = 63;    // negate reg
-  SOLOP_SHR = 64;    // add reg to reg
-  SOLOP_SHL = 65;    // add reg to reg
+  SOLOP_AND = 30;    // 'and' two regs
+  SOLOP_OR  = 31;    // 'or' two regs
+  SOLOP_XOR = 32;    // 'xor' two regs
+  SOLOP_NOT = 33;    // negate reg
+  SOLOP_SHR = 34;    // add reg to reg
+  SOLOP_SHL = 35;    // add reg to reg
 
   // branching opcodes
-  SOLOP_JMP         = 70;  // jump to location in index
-  SOLOP_JMP_ZERO    = 71;  // jump if reg is zero
-  SOLOP_JMP_EQUAL   = 72;  // jump if two regs are equal
-  SOLOP_JMP_DIFF    = 73;  // jump if two regs are different
-  SOLOP_JMP_LESS    = 74;  // jump if reg A is less than reg B
-  SOLOP_JMP_LESS_EQUAL  = 75;  // jump if reg A is less or equal than reg B
-  SOLOP_JMP_GREAT       = 76;  // jump if reg A is great than reg B
-  SOLOP_JMP_GREAT_EQUAL = 77;  // jump if reg A is great or equal than reg B
+  SOLOP_JMP         = 40;  // jump to location in index
+  SOLOP_JMP_ZERO    = 41;  // jump if reg is zero
+  SOLOP_JMP_EQUAL   = 42;  // jump if two regs are equal
+  SOLOP_JMP_DIFF    = 43;  // jump if two regs are different
+  SOLOP_JMP_LESS    = 44;  // jump if reg A is less than reg B
+  SOLOP_JMP_LESS_EQUAL  = 45;  // jump if reg A is less or equal than reg B
+  SOLOP_JMP_GREAT       = 46;  // jump if reg A is great than reg B
+  SOLOP_JMP_GREAT_EQUAL = 47;  // jump if reg A is great or equal than reg B
 
   // pseudo-threads opcodes
-  SOLOP_THREAD_START    = 80; // create a new pseudo thread and invoke function indexed by reg (new thread id is returned in RX)
-  SOLOP_THREAD_STOP     = 81; // terminates execution of indexed by reg
-  SOLOP_THREAD_YIELD    = 82; // yields control to another pseudo thread
-  SOLOP_THREAD_SEND     = 83; // sends a reg as message to another thread
-  SOLOP_THREAD_RECEIVE  = 84; // receive a message from from another thread and put it in a reg (yields until a value arrives)
-  SOLOP_THREAD_PEEK     = 85; // puts the number of waiting messages in a reg
-  SOLOP_THREAD_LOCK     = 86; // stops all context switches (used for sending/receiving multiple stuff^)
-  SOLOP_THREAD_UNLOCK   = 87; // resumes context switches
-  SOLOP_THREAD_STATUS   = 88; // returns into reg the current status of a thread
+  SOLOP_THREAD_START    = 50; // create a new pseudo thread and invoke function indexed by reg (new thread id is returned in RX)
+  SOLOP_THREAD_STOP     = 51; // terminates execution of indexed by reg
+  SOLOP_THREAD_YIELD    = 52; // yields control to another pseudo thread
+  SOLOP_THREAD_SEND     = 53; // sends a reg as message to another thread
+  SOLOP_THREAD_RECEIVE  = 54; // receive a message from from another thread and put it in a reg (yields until a value arrives)
+  SOLOP_THREAD_PEEK     = 55; // puts the number of waiting messages in a reg
+  SOLOP_THREAD_LOCK     = 56; // stops all context switches (used for sending/receiving multiple stuff^)
+  SOLOP_THREAD_UNLOCK   = 57; // resumes context switches
+  SOLOP_THREAD_STATUS   = 58; // returns into reg the current status of a thread
+
+  // float math opcodes
+  SOLOP_FLOAT_MOVE  = 60;    // copy int reg to float reg
+  SOLOP_FLOAT_TRUNC = 61;    // truncate float reg to integer reg
+  SOLOP_FLOAT_ROUND = 62;    // round float reg to integer reg
+  SOLOP_FLOAT_ADD   = 63;    // add reg to reg
+  SOLOP_FLOAT_SUB   = 64;    // subtract reg from reg
+  SOLOP_FLOAT_MUL   = 65;    // multiply reg with reg
+  SOLOP_FLOAT_DIV   = 66;    // divide reg by reg
+  SOLOP_FLOAT_MOD   = 67;    // modulus of reg by reg
+  SOLOP_FLOAT_SQRT  = 68;    // square root of reg
+  SOLOP_FLOAT_INV_SQRT = 69; // 1.0 / square root of reg
+  SOLOP_FLOAT_LOG   = 70;    // log2 of reg
+  SOLOP_FLOAT_POW   = 71;    // log2 of reg
+  SOLOP_FLOAT_COS   = 72;    // cosine of reg
+  SOLOP_FLOAT_SIN   = 73;    // sine of reg
+  SOLOP_FLOAT_TAN   = 74;    // tangent of reg
+  SOLOP_FLOAT_ARCCOS = 75;   // arc cosine of reg
+  SOLOP_FLOAT_ARCSIN = 76;   // arc sine of reg
+  SOLOP_FLOAT_ARCTAN = 77;   // arc tangent of reg
+  SOLOP_FLOAT_ATAN2 = 78;   // arctan2 of reg
+  SOLOP_FLOAT_ABS 	= 79;   // absolute value of reg
+  SOLOP_FLOAT_MIN 	= 80;   // copy smallest of two regs into reg
+  SOLOP_FLOAT_MAX 	= 81;   // copy largest of two regs into reg
+
+  // vec2 math opcodes
+  SOLOP_VEC2_MOVE  = 80;    // copy int reg to float reg
+  SOLOP_VEC2_ADD   = 81;    // add reg to reg
+  SOLOP_VEC2_SUB   = 82;    // subtract reg from reg
+  SOLOP_VEC2_MUL   = 83;    // multiply reg with reg
+  SOLOP_VEC2_DIV   = 84;    // divide reg by reg
+  SOLOP_VEC2_MOD   = 85;    // modulus of reg by reg
+  SOLOP_VEC2_SQRT  = 86;    // square root of reg
+  SOLOP_VEC2_INV_SQRT = 87; // 1.0 / square root of reg
+  SOLOP_VEC2_LOG   = 89;    // log2 of reg
+  SOLOP_VEC2_POW   = 90;    // log2 of reg
+  SOLOP_VEC2_COS   = 91;    // cosine of reg
+  SOLOP_VEC2_SIN   = 92;    // sine of reg
+  SOLOP_VEC2_TAN   = 93;    // tangent of reg
+  SOLOP_VEC2_ARCCOS = 94;   // arc cosine of reg
+  SOLOP_VEC2_ARCSIN = 95;   // arc sine of reg
+  SOLOP_VEC2_ARCTAN = 96;   // arc tangent of reg
+  SOLOP_VEC2_ATAN2 = 97;   // arctan2 of reg
+  SOLOP_VEC2_LENGTH = 98;   // length of reg (or abs() if size = 0)
+  SOLOP_VEC2_SHUFFLE = 99; // switches different parts of vectors around
 
   // other constants
   SOL_POSITION_REG = 0;
@@ -235,8 +258,8 @@ Type
       Function Run():Cardinal;
   End;
 
-Function SOL_EncodeInstruction(Opcode:Cardinal; Arg1:Cardinal = 0; Arg2:Cardinal = 0;  Arg3:Cardinal = 0; Size:Cardinal = 0):SOL_Instruction;
-Procedure SOL_DecodeInstruction(Const Inst:Cardinal; Out Opcode, Size, Arg1, Arg2, Arg3:Cardinal);
+Function SOL_EncodeInstruction(Opcode:Cardinal; Arg1:Cardinal = 0; Arg2:Cardinal = 0;  Arg3:Cardinal = 0):SOL_Instruction;
+Procedure SOL_DecodeInstruction(Const Inst:Cardinal; Out Opcode, Arg1, Arg2, Arg3:Cardinal);
 
 
 Function SOL_Float_Pack(Const X:Single):SOL_Register;
@@ -254,12 +277,12 @@ Begin
   Result := Single((@X)^);
 End;
 
-Function SOL_EncodeInstruction(Opcode:Cardinal; Arg1:Cardinal = 0; Arg2:Cardinal = 0;  Arg3:Cardinal = 0; Size:Cardinal = 0):SOL_Instruction;
+Function SOL_EncodeInstruction(Opcode:Cardinal; Arg1:Cardinal = 0; Arg2:Cardinal = 0;  Arg3:Cardinal = 0):SOL_Instruction;
 Begin
   Result := Opcode + Size Shl 7 + Arg1 Shl 11 + Arg2 Shl 18 + Arg3 Shl 25;
 End;
 
-Procedure SOL_DecodeInstruction(Const Inst:Cardinal; Out Opcode, Size, Arg1, Arg2, Arg3:Cardinal);
+Procedure SOL_DecodeInstruction(Const Inst:Cardinal; Out Opcode, Arg1, Arg2, Arg3:Cardinal);
 Var
   Mask:Cardinal;
 Begin
