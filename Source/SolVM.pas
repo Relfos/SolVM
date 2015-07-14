@@ -108,35 +108,36 @@ Const
   SOLOP_FLOAT_ARCSIN = 47;   // arc sine of reg
   SOLOP_FLOAT_ARCTAN = 48;   // arc tangent of reg
   SOLOP_FLOAT_ATAN2 = 49;   // arctan2 of reg
+  SOLOP_FLOAT_LENGTH = 50;   // length of reg (or abs() if size = 0)
 
   // bit math opcodes
-  SOLOP_AND = 50;    // 'and' two regs
-  SOLOP_OR  = 51;    // 'or' two regs
-  SOLOP_XOR = 52;    // 'xor' two regs
-  SOLOP_NOT = 53;    // negate reg
-  SOLOP_SHR = 54;    // add reg to reg
-  SOLOP_SHL = 55;    // add reg to reg
+  SOLOP_AND = 60;    // 'and' two regs
+  SOLOP_OR  = 61;    // 'or' two regs
+  SOLOP_XOR = 62;    // 'xor' two regs
+  SOLOP_NOT = 63;    // negate reg
+  SOLOP_SHR = 64;    // add reg to reg
+  SOLOP_SHL = 65;    // add reg to reg
 
   // branching opcodes
-  SOLOP_JMP         = 60;  // jump to location in index
-  SOLOP_JMP_ZERO    = 61;  // jump if reg is zero
-  SOLOP_JMP_EQUAL   = 62;  // jump if two regs are equal
-  SOLOP_JMP_DIFF    = 63;  // jump if two regs are different
-  SOLOP_JMP_LESS    = 64;  // jump if reg A is less than reg B
-  SOLOP_JMP_LESS_EQUAL  = 65;  // jump if reg A is less or equal than reg B
-  SOLOP_JMP_GREAT       = 66;  // jump if reg A is great than reg B
-  SOLOP_JMP_GREAT_EQUAL = 67;  // jump if reg A is great or equal than reg B
+  SOLOP_JMP         = 70;  // jump to location in index
+  SOLOP_JMP_ZERO    = 71;  // jump if reg is zero
+  SOLOP_JMP_EQUAL   = 72;  // jump if two regs are equal
+  SOLOP_JMP_DIFF    = 73;  // jump if two regs are different
+  SOLOP_JMP_LESS    = 74;  // jump if reg A is less than reg B
+  SOLOP_JMP_LESS_EQUAL  = 75;  // jump if reg A is less or equal than reg B
+  SOLOP_JMP_GREAT       = 76;  // jump if reg A is great than reg B
+  SOLOP_JMP_GREAT_EQUAL = 77;  // jump if reg A is great or equal than reg B
 
   // pseudo-threads opcodes
-  SOLOP_THREAD_START    = 70; // create a new pseudo thread and invoke function indexed by reg (new thread id is returned in RX)
-  SOLOP_THREAD_STOP     = 71; // terminates execution of indexed by reg
-  SOLOP_THREAD_YIELD    = 72; // yields control to another pseudo thread
-  SOLOP_THREAD_SEND     = 73; // sends a reg as message to another thread
-  SOLOP_THREAD_RECEIVE  = 74; // receive a message from from another thread and put it in a reg (yields until a value arrives)
-  SOLOP_THREAD_PEEK     = 75; // puts the number of waiting messages in a reg
-  SOLOP_THREAD_LOCK     = 76; // stops all context switches (used for sending/receiving multiple stuff^)
-  SOLOP_THREAD_UNLOCK   = 77; // resumes context switches
-  SOLOP_THREAD_STATUS   = 78; // returns into reg the current status of a thread
+  SOLOP_THREAD_START    = 80; // create a new pseudo thread and invoke function indexed by reg (new thread id is returned in RX)
+  SOLOP_THREAD_STOP     = 81; // terminates execution of indexed by reg
+  SOLOP_THREAD_YIELD    = 82; // yields control to another pseudo thread
+  SOLOP_THREAD_SEND     = 83; // sends a reg as message to another thread
+  SOLOP_THREAD_RECEIVE  = 84; // receive a message from from another thread and put it in a reg (yields until a value arrives)
+  SOLOP_THREAD_PEEK     = 85; // puts the number of waiting messages in a reg
+  SOLOP_THREAD_LOCK     = 86; // stops all context switches (used for sending/receiving multiple stuff^)
+  SOLOP_THREAD_UNLOCK   = 87; // resumes context switches
+  SOLOP_THREAD_STATUS   = 88; // returns into reg the current status of a thread
 
   // other constants
   SOL_POSITION_REG = 0;
@@ -153,6 +154,8 @@ Const
   SOL_REG7 = SOL_BASE_REG + 6;
   SOL_REG8 = SOL_BASE_REG + 7;
   SOL_REG9 = SOL_BASE_REG + 8;
+
+  SOL_REG_PAD = 4;
   SOL_MAX_REGS = 128;
 
   SOL_DEFAULT_STACK_SIZE = 1024*8;
@@ -260,13 +263,11 @@ Procedure SOL_DecodeInstruction(Const Inst:Cardinal; Out Opcode, Size, Arg1, Arg
 Var
   Mask:Cardinal;
 Begin
-  Mask := ((1 Shl 7) - 1);
-  Opcode := Inst And Mask;
-
   Mask := ((1 Shl 4) - 1);
   Size := (Inst Shr 7) And Mask;
 
   Mask := ((1 Shl 7) - 1);
+  Opcode := Inst And Mask;
   Arg1 := (Inst Shr 11) And Mask;
   Arg2 := (Inst Shr 18) And Mask;
   Arg3 := (Inst Shr 25) And Mask;
@@ -312,7 +313,7 @@ Var
   Opcode, Arg1, Arg2, Arg3:Cardinal;
   I:Integer;
   F1, F2:Single;
-  NextPos, Size:Cardinal;
+  Temp, Size:Cardinal;
 Begin
   ReturnValue := 0;
   Result := False;
@@ -365,7 +366,12 @@ Begin
 
     SOLOP_MOVE:
       Begin
-        _Registers[Arg3] := _Registers[Arg1];
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg3] := _Registers[Arg1];
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_COPY: // moves number of bytes from location index by reg to other location by another reg
@@ -385,176 +391,342 @@ Begin
 
     SOLOP_CONST:
       Begin
-        _Registers[Arg1]:= Fetch();
+        Temp := Fetch();
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg1]:= Temp;
+          Inc(Arg1, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_INT_INC:
       Begin
-        Inc(_Registers[Arg1], Arg2);
+        For I:=0 To Size Do
+        Begin
+          Inc(_Registers[Arg1], Arg2);
+          Inc(Arg1, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_INT_DEC:
       Begin
-        Dec(_Registers[Arg1], Arg2);
+        For I:=0 To Size Do
+        Begin
+          Dec(_Registers[Arg1], Arg2);
+          Inc(Arg1, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_INT_ADD:
       Begin
-        _Registers[Arg3] := _Registers[Arg1] + _Registers[Arg2];
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg3] := _Registers[Arg1] + _Registers[Arg2];
+
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_INT_SUB:
       Begin
+        For I:=0 To Size Do
+        Begin
         _Registers[Arg3] := _Registers[Arg1] - _Registers[Arg2];
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_INT_MUL:
       Begin
-        _Registers[Arg3] := _Registers[Arg1] * _Registers[Arg2];
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg3] := _Registers[Arg1] * _Registers[Arg2];
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_INT_DIV:
       Begin
-        _Registers[Arg3] := _Registers[Arg1] Div _Registers[Arg2];
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg3] := _Registers[Arg1] Div _Registers[Arg2];
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_INT_MOD:
       Begin
-        _Registers[Arg3] := _Registers[Arg1] Mod _Registers[Arg2];
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg3] := _Registers[Arg1] Mod _Registers[Arg2];
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_MOVE:
       Begin
-        I := _Registers[Arg1];
-        _Registers[Arg3] := SOL_Float_Pack(I);
+        Temp := _Registers[Arg1];
+        Temp := SOL_Float_Pack(Temp);
+
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg3] := Temp;
+          Inc(Arg1, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_TRUNC:
       Begin
         F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := Trunc(F1);
+
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg3] := Trunc(F1);
+          Inc(Arg1, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_ROUND:
       Begin
         F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := Round(F1);
+
+        For I:=0 To Size Do
+        Begin
+          _Registers[Arg3] := Round(F1);
+          Inc(Arg1, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_ADD:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        F2 := SOL_Float_Unpack(_Registers[Arg2]);
-        _Registers[Arg3] := SOL_Float_Pack(F1 + F2);
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          F2 := SOL_Float_Unpack(_Registers[Arg2]);
+          _Registers[Arg3] := SOL_Float_Pack(F1 + F2);
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
+
       End;
 
     SOLOP_FLOAT_SUB:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        F2 := SOL_Float_Unpack(_Registers[Arg2]);
-        _Registers[Arg3] := SOL_Float_Pack(F1 - F2);
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          F2 := SOL_Float_Unpack(_Registers[Arg2]);
+          _Registers[Arg3] := SOL_Float_Pack(F1 - F2);
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_MUL:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        F2 := SOL_Float_Unpack(_Registers[Arg2]);
-        _Registers[Arg3] := SOL_Float_Pack(F1 * F2);
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          F2 := SOL_Float_Unpack(_Registers[Arg2]);
+          _Registers[Arg3] := SOL_Float_Pack(F1 * F2);
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_DIV:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          F2 := SOL_Float_Unpack(_Registers[Arg2]);
 
-        If F2<>0.0 Then
-          F1 := F1 / F2
-        Else
-          F1 := 0.0;
+          If F2<>0.0 Then
+            F1 := F1 / F2
+          Else
+            F1 := 0.0;
 
-        _Registers[Arg3] := SOL_Float_Pack(F1);
+          _Registers[Arg3] := SOL_Float_Pack(F1);
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
    SOLOP_FLOAT_MOD:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          F2 := SOL_Float_Unpack(_Registers[Arg2]);
 
-        If F2<>0.0 Then
-          F1 := FloatMod(F1, F2)
-        Else
-          F1 := 0.0;
+          If F2<>0.0 Then
+            F1 := FloatMod(F1, F2)
+          Else
+            F1 := 0.0;
 
-        _Registers[Arg3] := SOL_Float_Pack(F1);
+          _Registers[Arg3] := SOL_Float_Pack(F1);
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_SQRT:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(Sqrt(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(Sqrt(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_INV_SQRT:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(InvSqrt(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(InvSqrt(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_LOG:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(Log2(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(Log2(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_POW:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          F2 := SOL_Float_Unpack(_Registers[Arg2]);
 
-        _Registers[Arg3] := SOL_Float_Pack(Power(F1, F2));
+          _Registers[Arg3] := SOL_Float_Pack(Power(F1, F2));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_COS:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(Cos(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(Cos(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_SIN:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(Sin(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(Sin(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_TAN:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(Tan(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(Tan(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_ARCCOS:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(ArcCos(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(ArcCos(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_ARCSIN:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(ArcSin(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(ArcSin(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_ARCTAN:
       Begin
-        F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        _Registers[Arg3] := SOL_Float_Pack(ArcTan(F1));
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          _Registers[Arg3] := SOL_Float_Pack(ArcTan(F1));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
       End;
 
     SOLOP_FLOAT_ATAN2:
       Begin
+        For I:=0 To Size Do
+        Begin
+          F1 := SOL_Float_Unpack(_Registers[Arg1]);
+          F2 := SOL_Float_Unpack(_Registers[Arg2]);
+          _Registers[Arg3] := SOL_Float_Pack(ATan2(F1, F2));
+          Inc(Arg1, SOL_REG_PAD);
+          Inc(Arg2, SOL_REG_PAD);
+          Inc(Arg3, SOL_REG_PAD);
+        End;
+      End;
+
+    SOLOP_FLOAT_LENGTH:
+      If (Size = 0) Then
+      Begin
         F1 := SOL_Float_Unpack(_Registers[Arg1]);
-        F2 := SOL_Float_Unpack(_Registers[Arg2]);
-        _Registers[Arg3] := SOL_Float_Pack(ATan2(F1, F2));
+        _Registers[Arg3] := SOL_Float_Pack(Abs(F1));
+      End Else
+      Begin
+        F1 := 0.0;
+        For I:=0 To Size Do
+        Begin
+          F2 := SOL_Float_Unpack(_Registers[Arg1]);
+          F1 := F1 + Sqr(F2);
+          Inc(Arg1, SOL_REG_PAD);
+        End;
+
+        _Registers[Arg3] := SOL_Float_Pack(Sqrt(F1));
       End;
 
     SOLOP_THREAD_YIELD:
@@ -595,57 +767,56 @@ Begin
 
     SOLOP_JMP:
       Begin
-        NextPos := Fetch();
-        _Registers[SOL_POSITION_REG] := NextPos;
+        _Registers[SOL_POSITION_REG] := Fetch();
       End;
 
     SOLOP_JMP_ZERO:
       Begin
-        NextPos := Fetch();
+        Temp := Fetch();
         If (_Registers[Arg1] = 0) Then
-          _Registers[SOL_POSITION_REG] := NextPos;
+          _Registers[SOL_POSITION_REG] := Temp;
       End;
 
     SOLOP_JMP_EQUAL:
       Begin
-        NextPos := Fetch();
+        Temp := Fetch();
         If (_Registers[Arg1] = _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := NextPos;
+          _Registers[SOL_POSITION_REG] := Temp;
       End;
 
     SOLOP_JMP_DIFF:
       Begin
-        NextPos := Fetch();
+        Temp := Fetch();
         If (_Registers[Arg1] <> _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := NextPos;
+          _Registers[SOL_POSITION_REG] := Temp;
       End;
 
     SOLOP_JMP_LESS:
       Begin
-        NextPos := Fetch();
+        Temp := Fetch();
         If (_Registers[Arg1] < _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := NextPos;
+          _Registers[SOL_POSITION_REG] := Temp;
       End;
 
     SOLOP_JMP_LESS_EQUAL:
       Begin
-        NextPos := Fetch();
+        Temp := Fetch();
         If (_Registers[Arg1] <= _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := NextPos;
+          _Registers[SOL_POSITION_REG] := Temp;
       End;
 
     SOLOP_JMP_GREAT:
       Begin
-        NextPos := Fetch();
+        Temp := Fetch();
         If (_Registers[Arg1] > _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := NextPos;
+          _Registers[SOL_POSITION_REG] := Temp;
       End;
 
     SOLOP_JMP_GREAT_EQUAL:
       Begin
-        NextPos := Fetch();
+        Temp := Fetch();
         If (_Registers[Arg1] >= _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := NextPos;
+          _Registers[SOL_POSITION_REG] := Temp;
       End;
 
     End;
