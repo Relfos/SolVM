@@ -194,24 +194,19 @@ Const
   SOL_EXCEPT_INVALID_CODE_ACCESS = 16;
   SOL_EXCEPT_INVALID_DATA_ACCESS = 32;
 
-  // native function convention calls
-  SOLCALL_Register  = 0; // default delphi call convention
-  SOLCALL_CDecl     = 1;
-  SOLCALL_StdCall   = 2;
-  SOLCALL_SafeCall  = 3;
-  SOLCALL_ThisCall  = 4;
-  // others are unsupported (eg: pascal call, fast call, vector call)
-
 Type
   SOL_Instruction = Cardinal;
   SOL_Register = Cardinal;
   SOL_String = TERRAString;
   SOL_NativeCallConvention = Cardinal;
 
-  SOL_NativeFunction = Record
+  SOL_Thread = Class;
+
+  SOL_NativeFunction = Function (Thread:SOL_Thread):SOL_Register;
+
+  SOL_NativeFunctionEntry = Record
     Name:SOL_String;
-    Address:Pointer;
-    ArgCount:Cardinal;
+    Func:SOL_NativeFunction;
     Convention:SOL_NativeCallConvention;
   End;
 
@@ -250,7 +245,7 @@ Type
       _Instructions:Array Of SOL_Instruction;
       _InstructionCount:Integer;
 
-      _NativeFunctions:Array Of SOL_NativeFunction;
+      _NativeFunctions:Array Of SOL_NativeFunctionEntry;
       _NativeFunctionCount:Integer;
 
       _Threads:Array Of SOL_Thread;
@@ -272,7 +267,7 @@ Type
       Function Read(Address:Cardinal):SOL_Register;
       Procedure Write(Address:Cardinal; Const Value:SOL_Register);
 
-      Function RegisterFunction(Const Name:SOL_String; Address:Pointer; ArgCount:Cardinal; Convention:SOL_NativeCallConvention = SOLCALL_Register):Cardinal;
+      Function RegisterFunction(Const Name:SOL_String; Func:SOL_NativeFunction):Cardinal;
 
       Procedure AddInstruction(Inst:SOL_Instruction);
 
@@ -841,16 +836,14 @@ Begin
     Result := _Instructions[Pos];
 End;
 
-Function SOL_Module.RegisterFunction(Const Name:SOL_String; Address:Pointer; ArgCount:Cardinal; Convention:SOL_NativeCallConvention):Cardinal;
+Function SOL_Module.RegisterFunction(Const Name:SOL_String; Func:SOL_NativeFunction):Cardinal;
 Begin
   Result := _NativeFunctionCount;
   Inc(_NativeFunctionCount);
   SetLength(_NativeFunctions, _NativeFunctionCount);
 
   _NativeFunctions[Result].Name := Name;
-  _NativeFunctions[Result].Address := Address;
-  _NativeFunctions[Result].ArgCount := ArgCount;
-  _NativeFunctions[Result].Convention := Convention;
+  _NativeFunctions[Result].Func := Func;
 End;
 
 procedure SOL_Module.Release;
@@ -869,37 +862,63 @@ Begin
   Until False;
 End;
 
-Type
-  NativeFunction1 = Function (Arg1:Cardinal):Cardinal;
-  NativeFunction2 = Function (Arg1, Arg2:Cardinal):Cardinal;
-  NativeFunction3 = Function (Arg1, Arg2, Arg3:Cardinal):Cardinal;
 
 Function SOL_Module.Invoke(Index: Cardinal): Cardinal;
 Var
   Arg1, Arg2, Arg3, Arg4:Cardinal;
+  NativeAddr:Pointer;
 Begin
   Result := 0;
 
   If (Index>= _NativeFunctionCount) Then
     Exit;
 
+  Result := _NativeFunctions[Index].
+
+  NativeAddr := _NativeFunctions[Index].Address;
+
   Case _NativeFunctions[Index].ArgCount Of
+  0:Begin
+      Asm
+        CALL NativeAddr
+        MOV Result, EAX
+      End;
+    End;
+
   1:Begin
       Arg1 := _CurrentThread.Pop();
-      Result := NativeFunction1(_NativeFunctions[Index].Address)(Arg1);
+
+      Asm
+        MOV EAX, Arg1
+        CALL NativeAddr
+        MOV Result, EAX
+      End;
     End;
 
   2:Begin
       Arg2 := _CurrentThread.Pop();
       Arg1 := _CurrentThread.Pop();
-      Result := NativeFunction2(_NativeFunctions[Index].Address)(Arg1, Arg2);
+
+      Asm
+        MOV EAX, Arg1
+        MOV EDX, Arg2
+        CALL NativeAddr
+        MOV Result, EAX
+      End;
     End;
 
   3:Begin
       Arg3 := _CurrentThread.Pop();
       Arg2 := _CurrentThread.Pop();
       Arg1 := _CurrentThread.Pop();
-      Result := NativeFunction3(_NativeFunctions[Index].Address)(Arg1, Arg2, Arg3);
+
+      Asm
+        MOV EAX, Arg1
+        MOV EDX, Arg2
+        MOV ECX, Arg3
+        CALL NativeAddr
+        MOV Result, EAX
+      End;
     End;
   End;
 End;
