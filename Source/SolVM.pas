@@ -75,9 +75,12 @@ Const
   SOLOP_SWAP  = 10; // swaps two regs
   SOLOP_MOVE  = 11; // copy reg to reg
   SOLOP_COPY  = 12; // moves number of bytes from location index by reg to other location by another reg
-  SOLOP_READ  = 13; // copy mem value to reg
-  SOLOP_WRITE = 14; // copy reg to mem value
-  SOLOP_CONST = 15; // copy const to reg
+  SOLOP_FILL  = 13; // fill a area of memory with a const value
+  SOLOP_ZERO  = 14; // fill a area of memory with zeros
+  SOLOP_READ  = 15; // copy mem value to reg
+  SOLOP_WRITE = 16; // copy reg to mem value
+  SOLOP_CONST = 17; // copy const to 1 or more regs
+  SOLOP_DATA  = 18; // load data into area of memory indexed by reg
 
   // int math opcodes
   SOLOP_INT_INC   = 20;    // increment reg
@@ -183,6 +186,14 @@ Const
 
   SOL_DEFAULT_STACK_SIZE = 1024*8;
 
+  // VM exception flags
+  SOL_EXCEPT_INVALID_OP = 1;
+  SOL_EXCEPT_STACK_OVERFLOW = 2;
+  SOL_EXCEPT_STACK_UNDERFLOW = 4;
+  SOL_EXCEPT_DIVISION_BY_ZERO = 8;
+  SOL_EXCEPT_INVALID_CODE_ACCESS = 16;
+  SOL_EXCEPT_INVALID_DATA_ACCESS = 32;
+
   // native function convention calls
   SOLCALL_Register  = 0; // default delphi call convention
   SOLCALL_CDecl     = 1;
@@ -204,18 +215,18 @@ Type
     Convention:SOL_NativeCallConvention;
   End;
 
-  SOL_Process = Class;
+  SOL_Module = Class;
 
   SOL_Thread = Class(TERRAObject)
     Protected
-      _Owner:SOL_Process;
+      _Owner:SOL_Module;
 
       _Registers:Array[0..Pred(SOL_MAX_REGS)] Of SOL_Register;
       _Stack:Array Of SOL_Register;
       _StackSize:Cardinal;
 
     Public
-      Constructor Create(Owner:SOL_Process; BasePos, StackSize:Cardinal);
+      Constructor Create(Owner:SOL_Module; BasePos, StackSize:Cardinal);
       Procedure Release(); Override;
 
       { Fetches the next instruction and advance the pointer}
@@ -224,13 +235,17 @@ Type
       Function Pop():SOL_Register;
       Procedure Push(Const Val:SOL_Register);
 
+      Procedure Jump(Address:Cardinal);
+
+      Procedure SetErrorFlag(Flag:Cardinal);
+
       Function Run(Out ReturnValue:Cardinal):Boolean;
 
       { Resets the registers and move the instruction pointer to the first instruction}
       Procedure Reset(Pos:Cardinal);
   End;
 
-  SOL_Process = Class(TERRAObject)
+  SOL_Module = Class(TERRAObject)
     Protected
       _Instructions:Array Of SOL_Instruction;
       _InstructionCount:Integer;
@@ -242,6 +257,9 @@ Type
       _ThreadCount:Integer;
       _CurrentThread:SOL_Thread;
 
+      _Memory:Array Of SOL_Register;
+      _MemoryCount:Cardinal;
+
       Function Fetch(Pos:Cardinal):SOL_Instruction;
       Function CreateThread(Pos:Cardinal):SOL_Thread;
 
@@ -250,6 +268,9 @@ Type
     Public
       Constructor Create();
       Procedure Release(); Override;
+
+      Function Read(Address:Cardinal):SOL_Register;
+      Procedure Write(Address:Cardinal; Const Value:SOL_Register);
 
       Function RegisterFunction(Const Name:SOL_String; Address:Pointer; ArgCount:Cardinal; Convention:SOL_NativeCallConvention = SOLCALL_Register):Cardinal;
 
@@ -279,25 +300,22 @@ End;
 
 Function SOL_EncodeInstruction(Opcode:Cardinal; Arg1:Cardinal = 0; Arg2:Cardinal = 0;  Arg3:Cardinal = 0):SOL_Instruction;
 Begin
-  Result := Opcode + Size Shl 7 + Arg1 Shl 11 + Arg2 Shl 18 + Arg3 Shl 25;
+  Result := Opcode + Arg1 Shl 8 + Arg2 Shl 16 + Arg3 Shl 24;
 End;
 
 Procedure SOL_DecodeInstruction(Const Inst:Cardinal; Out Opcode, Arg1, Arg2, Arg3:Cardinal);
 Var
   Mask:Cardinal;
 Begin
-  Mask := ((1 Shl 4) - 1);
-  Size := (Inst Shr 7) And Mask;
-
-  Mask := ((1 Shl 7) - 1);
+  Mask := ((1 Shl 8) - 1);
   Opcode := Inst And Mask;
-  Arg1 := (Inst Shr 11) And Mask;
-  Arg2 := (Inst Shr 18) And Mask;
-  Arg3 := (Inst Shr 25) And Mask;
+  Arg1 := (Inst Shr 8) And Mask;
+  Arg2 := (Inst Shr 16) And Mask;
+  Arg3 := (Inst Shr 24) And Mask;
 End;
 
 { SOL_Thread }
-Constructor SOL_Thread.Create(Owner:SOL_Process; BasePos, StackSize:Cardinal);
+Constructor SOL_Thread.Create(Owner:SOL_Module; BasePos, StackSize:Cardinal);
 Begin
   _Owner := Owner;
   _StackSize := StackSize;
@@ -336,7 +354,7 @@ Var
   Opcode, Arg1, Arg2, Arg3:Cardinal;
   I:Integer;
   F1, F2:Single;
-  Temp, Size:Cardinal;
+  Temp:Cardinal;
 Begin
   ReturnValue := 0;
   Result := False;
@@ -344,7 +362,7 @@ Begin
   Repeat
     N := Self.Fetch();
 
-    SOL_DecodeInstruction(N, Opcode, Size, Arg1, Arg2, Arg3);
+    SOL_DecodeInstruction(N, Opcode, Arg1, Arg2, Arg3);
 
     Case Opcode Of
     SOLOP_STOP:
@@ -361,7 +379,9 @@ Begin
 
     SOLOP_CALL:
       Begin
-        _Registers[Arg3] := _Owner.Invoke(_Registers[Arg1]);
+        Temp := _Owner.Invoke(_Registers[Arg1]);
+        If Arg3 > 0 Then
+          _Registers[Arg3] := Temp;
       End;
 
     SOLOP_RETURN: // return from current function
@@ -389,12 +409,7 @@ Begin
 
     SOLOP_MOVE:
       Begin
-        For I:=0 To Size Do
-        Begin
-          _Registers[Arg3] := _Registers[Arg1];
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        _Registers[Arg3] := _Registers[Arg1];
       End;
 
     SOLOP_COPY: // moves number of bytes from location index by reg to other location by another reg
@@ -402,354 +417,246 @@ Begin
         // move(bla)
       End;
 
+    SOLOP_FILL: // fill a area of memory with a const value
+      Begin
+        // fill(bla)
+      End;
+
+    SOLOP_ZERO: // fill a area of memory with zeros
+      Begin
+        // fill(bla)
+      End;
+
     SOLOP_READ:
       Begin
-       // _Registers[Arg3] := _Memory[Arg1];s
+        For I:=1 To Arg2 Do
+        Begin
+          _Registers[Arg3] := _Owner.Read(Arg1);
+          Inc(Arg1);
+          Inc(Arg3);
+        End;
       End;
 
     SOLOP_WRITE: // copy reg to mem value
       Begin
-        ///_Memory[Arg3] := _Registers[Arg1];
+        For I:=1 To Arg2 Do
+        Begin
+          _Owner.Write(Arg3, _Registers[Arg1]);
+          Inc(Arg1);
+          Inc(Arg3);
+        End;
       End;
 
     SOLOP_CONST:
       Begin
         Temp := Fetch();
-        For I:=0 To Size Do
+        _Registers[Arg1]:= Temp;
+      End;
+
+    SOLOP_DATA: // load data into area of memory indexed by reg
+      Begin
+        For I:=1 To Arg2 Do
         Begin
-          _Registers[Arg1]:= Temp;
-          Inc(Arg1, SOL_REG_PAD);
+          Temp := Fetch();
+          _Owner.Write(Arg1, Temp);
+          Inc(Arg1);
         End;
       End;
 
     SOLOP_INT_INC:
       Begin
-        For I:=0 To Size Do
-        Begin
-          Inc(_Registers[Arg1], Arg2);
-          Inc(Arg1, SOL_REG_PAD);
-        End;
+        Inc(_Registers[Arg1], Arg2);
       End;
 
     SOLOP_INT_DEC:
       Begin
-        For I:=0 To Size Do
-        Begin
-          Dec(_Registers[Arg1], Arg2);
-          Inc(Arg1, SOL_REG_PAD);
-        End;
+        Dec(_Registers[Arg1], Arg2);
       End;
 
     SOLOP_INT_ADD:
       Begin
-        For I:=0 To Size Do
-        Begin
-          _Registers[Arg3] := _Registers[Arg1] + _Registers[Arg2];
-
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        _Registers[Arg3] := _Registers[Arg1] + _Registers[Arg2];
       End;
 
     SOLOP_INT_SUB:
       Begin
-        For I:=0 To Size Do
-        Begin
         _Registers[Arg3] := _Registers[Arg1] - _Registers[Arg2];
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
       End;
 
     SOLOP_INT_MUL:
       Begin
-        For I:=0 To Size Do
-        Begin
-          _Registers[Arg3] := _Registers[Arg1] * _Registers[Arg2];
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        _Registers[Arg3] := _Registers[Arg1] * _Registers[Arg2];
       End;
 
     SOLOP_INT_DIV:
       Begin
-        For I:=0 To Size Do
+        Temp := _Registers[Arg2];
+
+        If (Temp = 0) Then
         Begin
-          _Registers[Arg3] := _Registers[Arg1] Div _Registers[Arg2];
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+          SetErrorFlag(SOL_EXCEPT_DIVISION_BY_ZERO);
+        End Else
+          Temp := _Registers[Arg1] Div Temp;
+
+          _Registers[Arg3] := Temp;
       End;
 
     SOLOP_INT_MOD:
       Begin
-        For I:=0 To Size Do
+        If (Temp = 0) Then
         Begin
-          _Registers[Arg3] := _Registers[Arg1] Mod _Registers[Arg2];
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+          SetErrorFlag(SOL_EXCEPT_DIVISION_BY_ZERO);
+        End Else
+          Temp := _Registers[Arg1] Mod Temp;
+
+          _Registers[Arg3] := Temp;
       End;
 
     SOLOP_FLOAT_MOVE:
       Begin
         Temp := _Registers[Arg1];
         Temp := SOL_Float_Pack(Temp);
-
-        For I:=0 To Size Do
-        Begin
-          _Registers[Arg3] := Temp;
-          Inc(Arg1, SOL_REG_PAD);
-        End;
+        _Registers[Arg3] := Temp;
       End;
 
     SOLOP_FLOAT_TRUNC:
       Begin
         F1 := SOL_Float_Unpack(_Registers[Arg1]);
-
-        For I:=0 To Size Do
-        Begin
-          _Registers[Arg3] := Trunc(F1);
-          Inc(Arg1, SOL_REG_PAD);
-        End;
+        _Registers[Arg3] := Trunc(F1);
       End;
 
     SOLOP_FLOAT_ROUND:
       Begin
         F1 := SOL_Float_Unpack(_Registers[Arg1]);
-
-        For I:=0 To Size Do
-        Begin
-          _Registers[Arg3] := Round(F1);
-          Inc(Arg1, SOL_REG_PAD);
-        End;
+        _Registers[Arg3] := Round(F1);
       End;
 
     SOLOP_FLOAT_ADD:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          F2 := SOL_Float_Unpack(_Registers[Arg2]);
-          _Registers[Arg3] := SOL_Float_Pack(F1 + F2);
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
-
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+        _Registers[Arg3] := SOL_Float_Pack(F1 + F2);
       End;
 
     SOLOP_FLOAT_SUB:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          F2 := SOL_Float_Unpack(_Registers[Arg2]);
-          _Registers[Arg3] := SOL_Float_Pack(F1 - F2);
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+        _Registers[Arg3] := SOL_Float_Pack(F1 - F2);
       End;
 
     SOLOP_FLOAT_MUL:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          F2 := SOL_Float_Unpack(_Registers[Arg2]);
-          _Registers[Arg3] := SOL_Float_Pack(F1 * F2);
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+        _Registers[Arg3] := SOL_Float_Pack(F1 * F2);
       End;
 
     SOLOP_FLOAT_DIV:
       Begin
-        For I:=0 To Size Do
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+
+        If F2<>0.0 Then
+          F1 := F1 / F2
+        Else
         Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          F2 := SOL_Float_Unpack(_Registers[Arg2]);
-
-          If F2<>0.0 Then
-            F1 := F1 / F2
-          Else
-            F1 := 0.0;
-
-          _Registers[Arg3] := SOL_Float_Pack(F1);
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
+          SetErrorFlag(SOL_EXCEPT_DIVISION_BY_ZERO);
+          F1 := 0.0;
         End;
+
+        _Registers[Arg3] := SOL_Float_Pack(F1);
       End;
 
    SOLOP_FLOAT_MOD:
       Begin
-        For I:=0 To Size Do
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+
+        If F2<>0.0 Then
+          F1 := FloatMod(F1, F2)
+        Else
         Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          F2 := SOL_Float_Unpack(_Registers[Arg2]);
-
-          If F2<>0.0 Then
-            F1 := FloatMod(F1, F2)
-          Else
-            F1 := 0.0;
-
-          _Registers[Arg3] := SOL_Float_Pack(F1);
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
+          SetErrorFlag(SOL_EXCEPT_DIVISION_BY_ZERO);
+          F1 := 0.0;
         End;
+
+        _Registers[Arg3] := SOL_Float_Pack(F1);
       End;
 
     SOLOP_FLOAT_SQRT:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(Sqrt(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(Sqrt(F1));
       End;
 
     SOLOP_FLOAT_INV_SQRT:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(InvSqrt(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(InvSqrt(F1));
       End;
 
     SOLOP_FLOAT_LOG:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(Log2(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(Log2(F1));
       End;
 
     SOLOP_FLOAT_POW:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          F2 := SOL_Float_Unpack(_Registers[Arg2]);
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        F2 := SOL_Float_Unpack(_Registers[Arg2]);
 
-          _Registers[Arg3] := SOL_Float_Pack(Power(F1, F2));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        _Registers[Arg3] := SOL_Float_Pack(Power(F1, F2));
       End;
 
     SOLOP_FLOAT_COS:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(Cos(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(Cos(F1));
       End;
 
     SOLOP_FLOAT_SIN:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(Sin(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(Sin(F1));
       End;
 
     SOLOP_FLOAT_TAN:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(Tan(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(Tan(F1));
       End;
 
     SOLOP_FLOAT_ARCCOS:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(ArcCos(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(ArcCos(F1));
       End;
 
     SOLOP_FLOAT_ARCSIN:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(ArcSin(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(ArcSin(F1));
       End;
 
     SOLOP_FLOAT_ARCTAN:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          _Registers[Arg3] := SOL_Float_Pack(ArcTan(F1));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        _Registers[Arg3] := SOL_Float_Pack(ArcTan(F1));
       End;
 
     SOLOP_FLOAT_ATAN2:
       Begin
-        For I:=0 To Size Do
-        Begin
-          F1 := SOL_Float_Unpack(_Registers[Arg1]);
-          F2 := SOL_Float_Unpack(_Registers[Arg2]);
-          _Registers[Arg3] := SOL_Float_Pack(ATan2(F1, F2));
-          Inc(Arg1, SOL_REG_PAD);
-          Inc(Arg2, SOL_REG_PAD);
-          Inc(Arg3, SOL_REG_PAD);
-        End;
+        F1 := SOL_Float_Unpack(_Registers[Arg1]);
+        F2 := SOL_Float_Unpack(_Registers[Arg2]);
+        _Registers[Arg3] := SOL_Float_Pack(ATan2(F1, F2));
       End;
 
-    SOLOP_FLOAT_LENGTH:
-      If (Size = 0) Then
+    SOLOP_FLOAT_ABS:
       Begin
         F1 := SOL_Float_Unpack(_Registers[Arg1]);
         _Registers[Arg3] := SOL_Float_Pack(Abs(F1));
-      End Else
-      Begin
-        F1 := 0.0;
-        For I:=0 To Size Do
-        Begin
-          F2 := SOL_Float_Unpack(_Registers[Arg1]);
-          F1 := F1 + Sqr(F2);
-          Inc(Arg1, SOL_REG_PAD);
-        End;
-
-        _Registers[Arg3] := SOL_Float_Pack(Sqrt(F1));
       End;
 
     SOLOP_THREAD_YIELD:
@@ -797,49 +704,49 @@ Begin
       Begin
         Temp := Fetch();
         If (_Registers[Arg1] = 0) Then
-          _Registers[SOL_POSITION_REG] := Temp;
+          Jump(Temp);
       End;
 
     SOLOP_JMP_EQUAL:
       Begin
         Temp := Fetch();
         If (_Registers[Arg1] = _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := Temp;
+          Jump(Temp);
       End;
 
     SOLOP_JMP_DIFF:
       Begin
         Temp := Fetch();
         If (_Registers[Arg1] <> _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := Temp;
+          Jump(Temp);
       End;
 
     SOLOP_JMP_LESS:
       Begin
         Temp := Fetch();
         If (_Registers[Arg1] < _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := Temp;
+          Jump(Temp);
       End;
 
     SOLOP_JMP_LESS_EQUAL:
       Begin
         Temp := Fetch();
         If (_Registers[Arg1] <= _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := Temp;
+          Jump(Temp);
       End;
 
     SOLOP_JMP_GREAT:
       Begin
         Temp := Fetch();
         If (_Registers[Arg1] > _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := Temp;
+          Jump(Temp);
       End;
 
     SOLOP_JMP_GREAT_EQUAL:
       Begin
         Temp := Fetch();
         If (_Registers[Arg1] >= _Registers[Arg2]) Then
-          _Registers[SOL_POSITION_REG] := Temp;
+          Jump(Temp);
       End;
 
     End;
@@ -853,6 +760,7 @@ Begin
   Pos := _Registers[SOL_STACK_REG];
   If (Pos <= 0) Then
   Begin
+    SetErrorFlag(SOL_EXCEPT_STACK_UNDERFLOW);
     Result := 0;
     Exit;
   End;
@@ -868,20 +776,42 @@ Var
 Begin
   Pos := _Registers[SOL_STACK_REG];
   If (Pos>=_StackSize) Then
+  Begin
+    SetErrorFlag(SOL_EXCEPT_STACK_OVERFLOW);
     Exit;
+  End;
 
   _Stack[Pos] := Val;
   Inc(Pos);
   _Registers[SOL_STACK_REG] := Pos;
 End;
 
-{ SOL_Process }
-Constructor SOL_Process.Create;
+Procedure SOL_Thread.Jump(Address: Cardinal);
 Begin
-  _CurrentThread := Self.CreateThread(0);
+  If (Address >= _Owner._InstructionCount) Then
+  Begin
+    SetErrorFlag(SOL_EXCEPT_INVALID_CODE_ACCESS);
+    Exit;
+  End;
+
+  _Registers[SOL_POSITION_REG] := Address;
 End;
 
-Procedure SOL_Process.AddInstruction(Inst: SOL_Instruction);
+Procedure SOL_Thread.SetErrorFlag(Flag:Cardinal);
+Begin
+  _Registers[SOL_EXCEPT_REG] := _Registers[SOL_EXCEPT_REG] Or Flag;
+End;
+
+{ SOL_Module }
+Constructor SOL_Module.Create;
+Begin
+  _CurrentThread := Self.CreateThread(0);
+
+  _MemoryCount := 1024;
+  SetLength(_Memory, _MemoryCount);
+End;
+
+Procedure SOL_Module.AddInstruction(Inst: SOL_Instruction);
 Var
   N:Integer;
 Begin
@@ -891,7 +821,7 @@ Begin
   _Instructions[N] := Inst;
 End;
 
-Function SOL_Process.CreateThread(Pos: Cardinal): SOL_Thread;
+Function SOL_Module.CreateThread(Pos: Cardinal): SOL_Thread;
 Var
   N:Integer;
 Begin
@@ -903,7 +833,7 @@ Begin
   _Threads[N] := Result;
 End;
 
-Function SOL_Process.Fetch(Pos: Cardinal): SOL_Instruction;
+Function SOL_Module.Fetch(Pos: Cardinal): SOL_Instruction;
 Begin
   If (Pos >= _InstructionCount) Then
     Result := SOLOP_STOP
@@ -911,7 +841,7 @@ Begin
     Result := _Instructions[Pos];
 End;
 
-Function SOL_Process.RegisterFunction(Const Name:SOL_String; Address:Pointer; ArgCount:Cardinal; Convention:SOL_NativeCallConvention):Cardinal;
+Function SOL_Module.RegisterFunction(Const Name:SOL_String; Address:Pointer; ArgCount:Cardinal; Convention:SOL_NativeCallConvention):Cardinal;
 Begin
   Result := _NativeFunctionCount;
   Inc(_NativeFunctionCount);
@@ -923,11 +853,11 @@ Begin
   _NativeFunctions[Result].Convention := Convention;
 End;
 
-procedure SOL_Process.Release;
+procedure SOL_Module.Release;
 Begin
 End;
 
-Function SOL_Process.Run:Cardinal;
+Function SOL_Module.Run:Cardinal;
 Begin
   Result := 0;
 
@@ -944,7 +874,7 @@ Type
   NativeFunction2 = Function (Arg1, Arg2:Cardinal):Cardinal;
   NativeFunction3 = Function (Arg1, Arg2, Arg3:Cardinal):Cardinal;
 
-Function SOL_Process.Invoke(Index: Cardinal): Cardinal;
+Function SOL_Module.Invoke(Index: Cardinal): Cardinal;
 Var
   Arg1, Arg2, Arg3, Arg4:Cardinal;
 Begin
@@ -972,6 +902,28 @@ Begin
       Result := NativeFunction3(_NativeFunctions[Index].Address)(Arg1, Arg2, Arg3);
     End;
   End;
+End;
+
+Function SOL_Module.Read(Address: Cardinal): SOL_Register;
+Begin
+  If (Address < _MemoryCount) Then
+    Result := _Memory[Address]
+  Else
+  Begin
+    Result := 0;
+    _CurrentThread.SetErrorFlag(SOL_EXCEPT_INVALID_DATA_ACCESS);
+  End;
+End;
+
+procedure SOL_Module.Write(Address: Cardinal; const Value: SOL_Register);
+Begin
+  If (Address >= _MemoryCount) Then
+  Begin
+    _CurrentThread.SetErrorFlag(SOL_EXCEPT_INVALID_DATA_ACCESS);
+    Exit;
+  End;
+
+  _Memory[Address] := Value;
 End;
 
 End.
