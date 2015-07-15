@@ -873,55 +873,9 @@ Begin
   If (Index>= _NativeFunctionCount) Then
     Exit;
 
-  Result := _NativeFunctions[Index].
-
-  NativeAddr := _NativeFunctions[Index].Address;
-
-  Case _NativeFunctions[Index].ArgCount Of
-  0:Begin
-      Asm
-        CALL NativeAddr
-        MOV Result, EAX
-      End;
-    End;
-
-  1:Begin
-      Arg1 := _CurrentThread.Pop();
-
-      Asm
-        MOV EAX, Arg1
-        CALL NativeAddr
-        MOV Result, EAX
-      End;
-    End;
-
-  2:Begin
-      Arg2 := _CurrentThread.Pop();
-      Arg1 := _CurrentThread.Pop();
-
-      Asm
-        MOV EAX, Arg1
-        MOV EDX, Arg2
-        CALL NativeAddr
-        MOV Result, EAX
-      End;
-    End;
-
-  3:Begin
-      Arg3 := _CurrentThread.Pop();
-      Arg2 := _CurrentThread.Pop();
-      Arg1 := _CurrentThread.Pop();
-
-      Asm
-        MOV EAX, Arg1
-        MOV EDX, Arg2
-        MOV ECX, Arg3
-        CALL NativeAddr
-        MOV Result, EAX
-      End;
-    End;
-  End;
+  Result := _NativeFunctions[Index].Func(_CurrentThread);
 End;
+
 
 Function SOL_Module.Read(Address: Cardinal): SOL_Register;
 Begin
