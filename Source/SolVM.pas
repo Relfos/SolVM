@@ -23,7 +23,7 @@
 Unit SolVM;
 
 Interface
-Uses TERRA_Utils, TERRA_String, TERRA_Math;
+Uses TERRA_Object, TERRA_Utils, TERRA_String, TERRA_Math;
 
 {
   Registers list
