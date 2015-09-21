@@ -43,10 +43,12 @@ Begin
 (*  Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG0));
   Proc.AddInstruction(3);
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG1));
-  Proc.AddInstruction(5);
-  Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_INT_ADD, SOL_REG0, SOL_REG1, SOL_RESULT_REG));
+  Proc.AddInstruction(7);
+  Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_INT_ADD, SOL_REG0, SOL_REG1, SOL_REG2));
+  Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_STOP, SOL_REG2));
+*)
 
-  // sum two floats
+(*  // sum two floats
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG0));
   Proc.AddInstruction(SOL_Float_Pack(3.14159));
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG1));
@@ -54,9 +56,9 @@ Begin
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_FLOAT_ADD, SOL_REG0, SOL_REG1, SOL_RESULT_REG));*)
 
   // native call test
-(*  Proc.RegisterFunction('print', @Print, 1);
+  Proc.RegisterFunction('print', Print);
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG0));
-  Proc.AddInstruction(3);
+  Proc.AddInstruction(2);
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG1));
   Proc.AddInstruction(5);
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_INT_ADD, SOL_REG0, SOL_REG1, SOL_REG2));
@@ -65,7 +67,7 @@ Begin
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG1));
   Proc.AddInstruction(0);
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CALL, SOL_REG1));
-
+(*
   // native call test2
   Proc.RegisterFunction('print', @Print, 1);
   Proc.RegisterFunction('sum', @SumInt, 2);
@@ -88,7 +90,7 @@ Begin
 *)
 
   // native call test3
-  Proc.RegisterFunction('print', Print);
+(*  Proc.RegisterFunction('print', Print);
   Proc.RegisterFunction('sum', SumFloat);
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG0));
   Proc.AddInstruction(SOL_Float_Pack(2.5));
@@ -107,8 +109,7 @@ Begin
   Proc.AddInstruction(0);
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CALL, SOL_REG1));
 
-
-
+*)
   // abs() test
 (*  Proc.RegisterFunction('print', @Print, 1);
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CONST, SOL_REG0));
@@ -120,6 +121,7 @@ Begin
   Proc.AddInstruction(SOL_EncodeInstruction(SOLOP_CALL, SOL_REG1));*)
 
   N := Proc.Run();
+  //WriteLn(N);
 
   ReleaseObject(Proc);
 

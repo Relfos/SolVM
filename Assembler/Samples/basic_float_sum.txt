@@ -1,0 +1,5 @@
+; sums two float numbers, returns the result
+MOV R0, 3.14159
+MOV R1, 2.0
+ADD R0, R1, R2
+STOP R2

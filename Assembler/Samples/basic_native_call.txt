@@ -1,0 +1,8 @@
+; sums 3 and 7, calls native function to print the result
+MOV R0, 5
+MOV R1, 6
+ADD R0, R1, R2
+PUSH R2
+BIND R3, "print"
+CALL R3
+STOP
